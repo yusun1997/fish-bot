@@ -1,0 +1,104 @@
+require("dotenv").config();
+const { Client, GatewayIntentBits, Events } = require("discord.js");
+const fs = require("fs");
+
+const DAILY_LIMIT = Number(process.env.DAILY_LIMIT || 900);
+const DATA_FILE = process.env.DATA_FILE || "userData.json";
+
+const client = new Client({ intents: [GatewayIntentBits.Guilds] });
+
+// --- 讀/寫資料 ---
+function safeLoad() {
+  try {
+    return JSON.parse(fs.readFileSync(DATA_FILE, "utf8"));
+  } catch (_) {
+    return {}; // 沒檔案就回空物件
+  }
+}
+function safeSave(obj) {
+  fs.writeFileSync(DATA_FILE, JSON.stringify(obj, null, 2), "utf8");
+}
+// 以「台北時間中午 12:00」為日界線的 key
+function todayKeyByNoon() {
+  const tz = process.env.TZ || "Asia/Taipei"; // .env 設 TZ=Asia/Taipei
+  // 先把現在時間轉成該時區的 Date 物件
+  const zoned = new Date(new Date().toLocaleString("en-US", { timeZone: tz }));
+  // 往回推 12 小時 → 日界線移到中午
+  zoned.setHours(zoned.getHours() - 12);
+  const y = zoned.getFullYear();
+  const m = String(zoned.getMonth() + 1).padStart(2, "0");
+  const d = String(zoned.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`; // 例如 '2025-10-24'
+}
+// 以「台北時間的 yyyy-mm-dd」做當日 key
+/*function todayKey() {
+  const dt = new Date();
+  const s = new Intl.DateTimeFormat("sv-SE", {
+    // 會輸出 2025-10-24 這種
+    timeZone: process.env.TZ || "Asia/Taipei",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(dt);
+  return s; // 'YYYY-MM-DD'
+}*/
+function cleanupOldData(store, keepDays = 7) {
+  const now = Date.now();
+  const DAY_MS = 86400000;
+
+  for (const key of Object.keys(store)) {
+    const date = new Date(key); // key 是 'YYYY-MM-DD'
+    if (isNaN(date)) continue; // 忽略不合法 key
+    const diffDays = (now - date.getTime()) / DAY_MS;
+    if (diffDays > keepDays) {
+      delete store[key];
+    }
+  }
+}
+// 資料結構：data[date][guildId][userId] = sum
+let data = safeLoad();
+cleanupOldData(data);
+safeSave(data);
+
+client.once(Events.ClientReady, () => {
+  console.log(`✅ 已登入：${client.user.tag}`);
+});
+
+// ---- 指令處理 ----
+client.on(Events.InteractionCreate, async (i) => {
+  if (!i.isChatInputCommand()) return;
+
+  const date = todayKeyByNoon();
+  const guildId = i.guildId ?? "dm";
+  data[date] ??= {};
+  data[date][guildId] ??= {};
+
+  if (i.commandName === "add") {
+    const amount = i.options.getInteger("amount");
+    const uid = i.user.id;
+
+    const cur = (data[date][guildId][uid] ??= 0);
+    const next = cur + amount;
+    data[date][guildId][uid] = next;
+    safeSave(data);
+
+    let msg = `你今天的累積金額是 **${next}** 元。`;
+    if (next >= DAILY_LIMIT) msg += " 🚨 你已達上限（或超過）！";
+    else if (next >= DAILY_LIMIT - 100)
+      msg += ` ⚠️ 快達上限了（剩 ${DAILY_LIMIT - next} 元）`;
+    await i.reply(msg);
+  }
+
+  if (i.commandName === "status") {
+    const uid = i.user.id;
+    const cur = data[date][guildId][uid] ?? 0;
+    const remaining = Math.max(DAILY_LIMIT - cur, 0);
+    await i.reply(
+      cur > DAILY_LIMIT
+        ? `你今天累積：**${cur} 元**（已超過上限！）`
+        : `你今天累積：**${cur} 元**\n距離上限還有：**${remaining} 元**`
+    );
+  }
+});
+
+client.login(process.env.DISCORD_TOKEN);
