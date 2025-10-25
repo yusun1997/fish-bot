@@ -45,7 +45,7 @@ const rest = new REST({ version: "10" }).setToken(process.env.DISCORD_TOKEN);
     );
 
     console.log("✅ 指令註冊完成！");
-    console.log("👉 現在你可以使用以下指令：/add、/status、/cleanup");
+    console.log("👉 現在你可以使用以下指令：/add、/status、/cleanup、/reset");
   } catch (error) {
     console.error("❌ 註冊過程出錯：", error);
   }
