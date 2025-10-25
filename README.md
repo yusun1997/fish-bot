@@ -117,4 +117,30 @@ pm2 restart fish-bot
 > - `/reset` → 「已清空你今天的紀錄」
 
 ---
+```mermaid
+flowchart TD
+    A[使用者輸入 Slash 指令 /add、/status、/reset、/cleanup] --> B{Discord API}
+    B --> C[Bot 收到互動事件 - InteractionCreate]
+    C --> D[判斷指令名稱]
+    
+    D -->|/add| E[讀取 userData.json 並取得使用者當日金額]
+    E --> F[增加金額並檢查是否超過上限]
+    F --> G[更新 userData.json]
+    G --> H[公開回覆：顯示今日累積金額與剩餘額度]
 
+    D -->|/status| I[讀取 userData.json]
+    I --> J[公開回覆：顯示目前累積與上限差距]
+
+    D -->|/reset| K[清除使用者當日紀錄]
+    K --> L[更新 userData.json]
+    L --> M[公開回覆：今日紀錄已重置]
+
+    D -->|/cleanup| N[刪除七天前的舊資料]
+    N --> O[回覆：已清理舊資料]
+
+    P[每日中午 12:00 定時任務] --> Q[重置所有使用者的當日金額]
+    Q --> R[更新 userData.json 並寫入日期]
+    
+    H & J & M & O & R --> S((PM2 常駐運行))
+    S --> T[伺服器開機自啟動，確保 Bot 長期在線]
+```
