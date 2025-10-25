@@ -65,7 +65,7 @@ client.once(Events.ClientReady, () => {
 
 // ✅ Slash Command 觸發事件（唯一入口）
 client.on(Events.InteractionCreate, async (i) => {
-  if (!i.isChatInputCommand()) return; // 只響應 Slash 指令
+  if (!i.isChatInputCommand()) return;
 
   const date = todayKeyByNoon();
   const guildId = i.guildId ?? "dm";
@@ -81,11 +81,11 @@ client.on(Events.InteractionCreate, async (i) => {
     data[date][guildId][uid] = next;
     safeSave(data);
 
-    let msg = `你今天的累積金額是 **${next}** 元。`;
-    if (next >= DAILY_LIMIT) msg += " 🚨 你已達上限（或超過）！";
+    let msg = `@${i.user.username} 今天的累積金額是 **${next}** 元。`;
+    if (next >= DAILY_LIMIT) msg += " 🚨 已達上限（或超過）！";
     else if (next >= DAILY_LIMIT - 100)
       msg += ` ⚠️ 快達上限了（剩 ${DAILY_LIMIT - next} 元）`;
-    await i.reply({ content: msg, ephemeral: true });
+    await i.reply({ content: msg }); // 公開訊息
   }
 
   // /status
@@ -94,12 +94,12 @@ client.on(Events.InteractionCreate, async (i) => {
     const remaining = Math.max(DAILY_LIMIT - cur, 0);
     const msg =
       cur > DAILY_LIMIT
-        ? `你今天累積：**${cur} 元**（已超過上限！）`
-        : `你今天累積：**${cur} 元**\n距離上限還有：**${remaining} 元**`;
-    await i.reply({ content: msg, ephemeral: true });
+        ? `@${i.user.username} 今天累積：**${cur} 元**（已超過上限！）`
+        : `@${i.user.username} 今天累積：**${cur} 元**，距離上限還有：**${remaining} 元**`;
+    await i.reply({ content: msg }); // 公開訊息
   }
 
-  // /cleanup
+  // /cleanup （保留管理用途：仍公開回覆）
   if (i.commandName === "cleanup") {
     const before = Object.keys(data).length;
     cleanupOldData(data);
@@ -107,8 +107,24 @@ client.on(Events.InteractionCreate, async (i) => {
     const after = Object.keys(data).length;
     await i.reply({
       content: `已清理舊資料：${before - after} 筆（僅保留近 7 天）`,
-      ephemeral: true,
     });
+  }
+
+  // ✅ /reset：清空「自己」今天在此伺服器的紀錄
+  if (i.commandName === "reset") {
+    if (data[date]?.[guildId]?.[uid] != null) {
+      delete data[date][guildId][uid];
+      // 若該 guild 今天已無使用者，順手把空物件清掉（可選）
+      if (Object.keys(data[date][guildId]).length === 0)
+        delete data[date][guildId];
+      if (Object.keys(data[date]).length === 0) delete data[date];
+      safeSave(data);
+      await i.reply({ content: `@${i.user.username} 已清空你今天的紀錄。` });
+    } else {
+      await i.reply({
+        content: `@${i.user.username} 你今天沒有可清空的紀錄。`,
+      });
+    }
   }
 });
 

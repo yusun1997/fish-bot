@@ -23,6 +23,10 @@ const commands = [
   new SlashCommandBuilder()
     .setName("cleanup")
     .setDescription("清除七天前的舊資料"),
+
+  new SlashCommandBuilder()
+    .setName("reset")
+    .setDescription("清空你今天的紀錄（只影響你自己）"),
 ].map((command) => command.toJSON());
 
 // 建立 REST 實例
